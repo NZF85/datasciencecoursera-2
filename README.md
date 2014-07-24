@@ -1,6 +1,5 @@
 ## Getting and Cleaning Data Course Project
 
-This is the exercise for 'Getting and Cleaning Data' Course
 
 Instruction:
 
@@ -10,7 +9,7 @@ Instruction:
  1. Open R and set the working directory with ```setwd(dir)```
  1. Run the script with ```source('./run_analysis.R')```
 
-This will create the 'tidyData.csv' file with the cleaned data besides loading the dataframe 'dtidy' in your R work space. More information about this dataset in the CodeBook.
+This will create the 'tidyData.csv' file with the cleaned data besides loading the dataframe 'dtidy' in your R work space. More information about this dataset in the [CodeBook](https://github.com/emilioserra/datasciencecoursera/blob/master/CodeBook.md).
 
 In other words, project steps are followed automatically:
 

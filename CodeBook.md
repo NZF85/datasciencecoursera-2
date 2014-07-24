@@ -1,6 +1,6 @@
 #CodeBook
 
-The tidydata result of the script described in README.md is composed of the following columns:
+The tidydata result of the script described in [README.md](https://github.com/emilioserra/datasciencecoursera/blob/master/README.md) is composed of the following columns:
 
 1. activityName: Factor, six possible values: WALKING, WALKING_UPSTAIRS, WALKING_DOWNSTAIRS, SITTING, STANDING, LAYING
 1. subject:  The subject ID, an integer in the range 1:30
