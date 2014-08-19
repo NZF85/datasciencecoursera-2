@@ -1,92 +1,129 @@
+library(caret)
+library(parallel)
+library(doParallel)
 
-
-#Point 0 of project. Merges the training and the test sets to create one data set.
 loadData<-function(){
-  dsubjecttrain <<- fread("./train/subject_train.txt")
-  dYTrain <<- fread("./train/y_train.txt")
-  dXTrain <<-  data.table(read.table("./train/X_train.txt"))
- 
-  dsubjecttest <<- fread("./test/subject_test.txt")
-  dYTest <<- fread("./test/y_test.txt")
-  dXTest <<- data.table(read.table("./test/X_test.txt"))
+  #remove variables 
+  #rm(list = ls())
+  
+  #load raw data
+  training <<- read.csv("pml-training.csv", header = TRUE)
+  test  <<- read.csv('pml-testing.csv')
 }
 
-#Point 1 of project. Extracts only the measurements on the mean and standard deviation for each measurement. 
-mergeData<-function(){
-  subject<-rbind(dsubjecttrain, dsubjecttest)
-  y<- rbind(dYTrain, dYTest)
-  x<- rbind(dXTrain, dXTest)
-  dmerged<<- cbind( subject,y,x ) 
-  names(dmerged)[1]<<- "subject"
-  names(dmerged)[2]<<- "activity"
-
+cleanData<-function(){
+  #remove columns with over a 90% of not a number
+  nasPerColumn<<- apply(training,2,function(x) {sum(is.na(x))});
+  training <<- training[,which(nasPerColumn <  nrow(training)*0.9)];
+  
+  
+  #remove near zero variance predictors
+  nearZeroColumns <<- nearZeroVar(training, saveMetrics = TRUE)
+  training <<- training[, nearZeroColumns$nzv==FALSE]
+  
+  #remove not relevant columns for classification (x, user_name, raw time stamp 1  and 2, "new_window" and "num_window")
+  training<<-training[,7:ncol(training)]
+  
+  #class into factor
+  training$classe <<- factor(training$classe)
 }
 
-
-#Point 2 of project. Extracts only the measurements on the mean and standard deviation for each measurement. 
-# the () is included in grep to catch mean() and std() but not gravityMean or meanFreq (which are means but not measures meant)
-meanAndSD<-function(){
-  features <- fread("./features.txt")
-  indexes<-sort(c(grep("mean\\(\\)", features$V2),grep("std\\(\\)", features$V2)))
-  featuresNames<- paste0("V", indexes)
-  featuresDescriptiveNames<<-features[indexes]$V2
-  dMeanAndSD<<-subset(dmerged, select = c("activity","subject",featuresNames))
+#split training in 60% training and 40% test
+splitdata<-function(){
+  trainIndex <<- createDataPartition(y = training$classe, p=0.6,list=FALSE);
+  trainingPartition <<- training[trainIndex,];
+  testingPartition <<- training[-trainIndex,];
 }
 
-#Point 3 of project. Uses descriptive activity names to name the activities in the data set
-descriptiveActivityNames<-function(){
-  activitynames <- fread("activity_labels.txt")
-  names(activitynames)[1]<-"activity"
-  names(activitynames)[2]<-"activityName"
-  dmergedWithActivityNames <<- merge(activitynames, dMeanAndSD,  by = "activity", all.x = TRUE)
-}
-
-#Point 4 of project. Appropriately labels the data set with descriptive variable names. 
-descriptiveVariableNames<-function(){
-  d<-dmergedWithActivityNames
-  a<- featuresDescriptiveNames
-  a<- sub("\\(\\)", "", a)
-  a<- sub("-", ".", a)
-  names(d)[4:length(names(d))]<-a 
-  dWithDescriptiveVariableNames<<-d
-
+fitmodel<-function(){
+  
+  #random seed
+  set.seed(3433)
+  #parallel computing for multi-core
+  registerDoParallel(makeCluster(detectCores()))
+  
+  #three models are generated:  random forest   ("rf"), boosted trees ("gbm") and linear discriminant analysis ("lda") model
+  
+  model_rf <<- train(classe ~ .,  method="rf", data=trainingPartition)    
+  model_gbm <<-train(classe ~ ., method = 'gbm', data = trainingPartition)
+  model_lda <<-train(classe ~ ., method = 'lda', data = trainingPartition)
+  
 }
 
 
-#Pont 5 of project. Creates a second, independent tidy data set with the average of each variable for each activity and each subject. 
-secondTidyDataSet<-function(){
-  d<-dWithDescriptiveVariableNames
-  activities<- unique(d$activityName)
-  subjects<- unique(d$subject)
-  numericalVariables<-names(d)[4:length(names(d))]
+#accuracy info for testingPartition (testing) 
+accuracyInfo<-function(){
+  
+  
+  print("Random forest accuracy ")
+  rf_accuracy<<- predict(model_rf, testingPartition)
+  print(confusionMatrix(rf_accuracy, testingPartition$classe))
+  print("")
+  print("Boosted trees accuracy ")
+  gbm_accuracy<<- predict(model_gbm , testingPartition)
+  print(confusionMatrix(gbm_accuracy, testingPartition$classe))
+  print("")
+  print("Linear discriminant analysis")
+  lda_accuracy<<- predict(model_lda , testingPartition)
+  print()
+  print(confusionMatrix(lda_accuracy, testingPartition$classe))
+  
+  
+}
 
-  dtidy<<-data.frame()
-  for (i in 1:length(activities)){
-    for (j in 1:length(subjects)){  
-      daux<- subset(d, activityName==activities[i] & subject==subjects[j])
-      activityName<-activities[i]
-      subject<-subjects[j]
-      
-      daux2<- colMeans(subset(daux,select=numericalVariables))
-     
-      daux3<-data.frame(rbind(daux2))
+#tuning the random forest model with CV
+CVTuning<-function(){
+  
+  #random seed
+  set.seed(3433)
+  #parallel computing for multi-core
+  registerDoParallel(makeCluster(detectCores()))  
+  controlf <- trainControl(method = "repeatedcv", number = 10, repeats = 10)
+  model_rf_CV <<- train(classe ~ ., method="rf",  data=trainingPartition, trControl = controlf)
+  print("Random forest accuracy after CV")
+  rf_CV_accuracy<<- predict(model_rf_CV , testingPartition)
+  print(confusionMatrix(rf_CV_accuracy, testingPartition$classe))
+  
+}
 
-      daux4<-cbind(activityName,subject, daux3 )
-      dtidy <<- rbind(dtidy, daux4)
- 
-    }    
+#get the most important variables in the model
+mostImportantVariables<-function(){
+print("Variables importance in model")
+vi = varImp(model_rf_CV$finalModel)
+vi$var<-rownames(vi)
+vi = as.data.frame(vi[with(vi, order(vi$Overall, decreasing=TRUE)), ])
+rownames(vi) <- NULL
+print(vi)
+}
+
+
+
+
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
   }
-  write.csv(dtidy, file = "tidyData.csv",row.names=FALSE)
- 
 }
 
-require("data.table")
+
+#Prediction Assignment Submission
+predictionassignmet<- function(){
+  prediction <- predict(model_rf_CV, test)
+  print(prediction)
+  answers <- as.vector(prediction)
+  pml_write_files(answers)
+}
+
+
+
 loadData()
-mergeData()
-meanAndSD()
-descriptiveActivityNames()
-descriptiveVariableNames()
-secondTidyDataSet()
-
-
+cleanData()
+splitdata()
+fitmodel()
+accuracyInfo()
+CVTuning()
+mostImportantVariables()
+predictionassignmet()
 
